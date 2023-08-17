@@ -88,7 +88,7 @@ class Node:
 def save_data(nodes, data_reading, username, key):
     node = get_node_for_id(nodes, data_reading.id)
     datalog_name = node.get_datalog_name(data_reading)
-    aio = Client('danimtb', 'aio_vgWw33FaK8te7s2oHfuTk6OOmu9W')
+    aio = Client(username, key)
     datalog_filepath = os.path.join(os.getcwd(), f"{datalog_name}.csv")
     row = [data_reading.timestamp, data_reading.value]
     open_mode = "a" if os.path.exists(datalog_filepath) else "w"
