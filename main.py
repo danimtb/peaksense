@@ -17,19 +17,23 @@ def sigint_handler(signum, frame):
 
 
 async def update_node_streams(configuration, streams):
-    while True:
+    print("update_node_streams")
+    while loop:
         if data_reading_buffer:
+            print("update_node_streams: new data to publish!")
             data_reading = data_reading_buffer.pop(0)
             node = configuration.get_node_for_id(data_reading.id)
             for stream_id in node.streams:
                 stream = streams.get(stream_id)
-                stream.save_data(node, data_reading)
-        await asyncio.sleep(1)  # Adjust the sleep duration as needed
+                await stream.save_data(node, data_reading)
 
 
 async def read_from_serial(serial_port, serial_baud_rate):
+    print("read_from_serial")
     reader, _ = await serial_asyncio.open_serial_connection(url=serial_port, baudrate=serial_baud_rate)
-    while True:
+    print(f'Successfully opened serial port {serial_port} at {serial_baud_rate} baud')
+    while loop:
+        print("read")
         try:
             line = await reader.readline()
             line = line.decode('utf-8').rstrip()
