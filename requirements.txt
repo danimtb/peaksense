@@ -1,3 +1,6 @@
 adafruit-io
-pyserial
 pyyaml
+asyncio
+aiofiles
+aiohttp
+pyserial-asyncio

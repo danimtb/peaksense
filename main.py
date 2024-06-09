@@ -62,20 +62,21 @@ async def save_data(session, nodes, data_reading, username, key):
     node = get_node_for_id(nodes, data_reading.id)
     datalog_name = node.get_datalog_name(data_reading)
     datalog_filepath = os.path.join(os.getcwd(), f"{datalog_name}.csv")
-    row = [data_reading.timestamp, data_reading.value]
+    print(f"save data to {datalog_filepath}")
+    row = f"{data_reading.timestamp},{data_reading.value}\n"
     open_mode = "a" if os.path.exists(datalog_filepath) else "w"
 
     async with aiofiles.open(datalog_filepath, open_mode, newline='', encoding='UTF8') as f:
-        writer = csv.writer(await f.__anext__())
+        print("save to csv")
         if open_mode == "w":  # Write header
-            writer.writerow(["timestamp", data_reading.type.name.lower()])
-        
-        feed_name = node.get_feed_name(data_reading)
-        feed_url = f"https://io.adafruit.com/api/v2/{username}/feeds/{feed_name}/data"
-        async with session.post(feed_url, json={"value": data_reading.value}, headers={"X-AIO-Key": key}) as resp:
-            await resp.text()
+            await f.write("timestamp,{}\n".format(data_reading.type.name.lower()))
+        await f.write(row)
 
-        writer.writerow(row)
+    print("update feed")
+    feed_name = node.get_feed_name(data_reading)
+    feed_url = f"https://io.adafruit.com/api/v2/{username}/feeds/{feed_name}/data"
+    async with session.post(feed_url, json={"value": data_reading.value}, headers={"X-AIO-Key": key}) as resp:
+        await resp.text()
 
 
 def get_node_for_id(nodes, id):
