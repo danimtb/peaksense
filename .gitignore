@@ -3,3 +3,4 @@ venv
 .vscode
 configuration.yml
 *.csv
+__pycache__
