@@ -31,7 +31,7 @@ class Stream:
     @staticmethod
     def _check_id(node, data_reading):
         if node.id != data_reading.id:
-            raise Exception("Different ids")
+            raise Exception(f"The id of the node ({node.id}) does not match the data reading one {data_reading.id}")
 
     @abstractmethod
     async def save_data(self, node, data_reading):
