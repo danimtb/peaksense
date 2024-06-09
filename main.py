@@ -26,6 +26,7 @@ async def update_node_streams(configuration, streams):
             for stream_id in node.streams:
                 stream = streams.get(stream_id)
                 await stream.save_data(node, data_reading)
+        await asyncio.sleep(1)
 
 
 async def read_from_serial(serial_port, serial_baud_rate):

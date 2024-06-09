@@ -65,6 +65,8 @@ class CsvStream(Stream):
 
     def __init__(self, config):
         self.folder = os.path.join(os.getcwd(), config.get("folder"))
+        if not os.path.exists(self.folder):
+            os.mkdir(self.folder)
 
     def get_datalog_name(self, node, data_reading):
         self._check_id(node, data_reading)
