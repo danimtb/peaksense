@@ -34,7 +34,7 @@ class DataReading:
         self.type = DataType(int(raw_data["type"]))
         self.value = raw_data["data"]
         dt = datetime.now()
-        self.timestamp = datetime.timestamp(dt)
+        self.timestamp = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
 
     def __repr__(self):
         return f"{{timestamp: {self.timestamp}, id: {self.id}, type: {self.type.name}, value: {self.value}}}"
