@@ -52,11 +52,12 @@ class AdafruitStream(Stream):
 
     async def save_data(self, node, data_reading):
         async with aiohttp.ClientSession() as session:
-            print("update feed")
             feed_name = self.get_feed_name(node, data_reading)
+            print(f"Stream::{self.id}: Update feed {feed_name} with {data_reading}\n")
             feed_url = f"{self.url}/{self.username}/feeds/{feed_name}/data"
             async with session.post(feed_url, json={"value": data_reading.value},
                                     headers={"X-AIO-Key": self.key}) as resp:
+                print(f"Stream::{self.id}: Data updated!\n")
                 await resp.text()
 
 
@@ -75,12 +76,12 @@ class CsvStream(Stream):
     async def save_data(self, node, data_reading):
         datalog_name = self.get_datalog_name(node, data_reading)
         datalog_filepath = os.path.join(self.folder, f"{datalog_name}.csv")
-        print(f"save data to {datalog_filepath}")
+        print(f"Stream::{self.id}: Saving {data_reading} to {datalog_filepath}\n")
         row = f"{data_reading.timestamp},{data_reading.value}\n"
         open_mode = "a" if os.path.exists(datalog_filepath) else "w"
 
         async with aiofiles.open(datalog_filepath, open_mode, newline='', encoding='UTF8') as f:
-            print("save to csv")
+            print(f"Stream::{self.id}: Write to csv: {row}")
             if open_mode == "w":  # Write header
                 await f.write("timestamp,{}\n".format(data_reading.type.name.lower()))
             await f.write(row)
@@ -100,9 +101,10 @@ class HomeassistantStream(Stream):
     async def save_data(self, node, data_reading):
         # curl -X POST -d 'key=value&key2=value2' https://your-home-assistant:8123/api/webhook/some_hook_id
         async with aiohttp.ClientSession() as session:
-            print("update home assistant")
             webhook_id = self.get_webhook_id(node, data_reading)
             webhook_url = f"{self.url}/{webhook_id}"
+            print(f"Stream::{self.id}: Trigger webhook {webhook_id} with {data_reading}\n")
             data = {data_reading.type.name.lower(): data_reading.value}
             async with session.post(webhook_url, data=data) as resp:
+                print(f"Stream::{self.id}: Webhook triggered! ({data})\n")
                 await resp.text()
