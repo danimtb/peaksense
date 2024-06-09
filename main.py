@@ -1,89 +1,14 @@
-import csv
 import json
 import os
 import signal
-from datetime import datetime
-from enum import Enum
 
-import aiofiles
-import aiohttp
 import asyncio
-import yaml
 import serial_asyncio
 
 
-class DataType(Enum):
-    STATUS = 0  # Status
-    TEMPERATURE = 1  # Temperature
-    TEMPERATURE2 = 2  # Temperature #2
-    HUMIDITY = 3  # Relative Humidity
-    PRESSURE = 4  # Atmospheric Pressure
-    LIGHT = 5  # Light (lux)
-    VOLTAGE = 16  # Voltage
-    LATITUDE = 21  # GPS Latitude
-    LONGITUDE = 22  # GPS Longitude
-    ALTITUDE = 23  # GPS Altitude
-    HDOP = 24  # GPS HDOP
-    SPEED = 999  # GPS Speed
-    SPEED_LATITUDE_LONGITUDE_ALTITUDE_HDOP = 1000  # GPS Latitude, Longitude, Altitude, HDOP
-
-
-class DataReading:
-    def __init__(self, raw_data):
-        self.id = raw_data["id"]
-        self.type = DataType(int(raw_data["type"]))
-        self.value = raw_data["data"]
-        dt = datetime.now()
-        self.timestamp = dt.strftime('%Y-%m-%d %H:%M:%S %Z')
-
-    def __repr__(self):
-        return f"{{timestamp: {self.timestamp}, id: {self.id}, type: {self.type.name}, value: {self.value}}}"
-
-
-class Node:
-    def __init__(self, id, name):
-        self.id = id
-        self.name = name
-
-    def _check_id(self, data_reading):
-        if self.id != data_reading.id:
-            raise Exception("Different ids")
-
-    def get_feed_name(self, data_reading):
-        self._check_id(data_reading)
-        return f"{self.name}.{self.name}-{data_reading.type.name.lower()}"
-
-    def get_datalog_name(self, data_reading):
-        self._check_id(data_reading)
-        return f"{self.name}-{data_reading.type.name.lower()}"
-
-
-async def save_data(session, nodes, data_reading, username, key):
-    node = get_node_for_id(nodes, data_reading.id)
-    datalog_name = node.get_datalog_name(data_reading)
-    datalog_filepath = os.path.join(os.getcwd(), f"{datalog_name}.csv")
-    print(f"save data to {datalog_filepath}")
-    row = f"{data_reading.timestamp},{data_reading.value}\n"
-    open_mode = "a" if os.path.exists(datalog_filepath) else "w"
-
-    async with aiofiles.open(datalog_filepath, open_mode, newline='', encoding='UTF8') as f:
-        print("save to csv")
-        if open_mode == "w":  # Write header
-            await f.write("timestamp,{}\n".format(data_reading.type.name.lower()))
-        await f.write(row)
-
-    print("update feed")
-    feed_name = node.get_feed_name(data_reading)
-    feed_url = f"https://io.adafruit.com/api/v2/{username}/feeds/{feed_name}/data"
-    async with session.post(feed_url, json={"value": data_reading.value}, headers={"X-AIO-Key": key}) as resp:
-        await resp.text()
-
-
-def get_node_for_id(nodes, id):
-    for node in nodes:
-        if node.id == id:
-            return node
-    return None
+from config.configuration import Configuration
+from model.datareading import DataReading
+from streams.streams import Streams
 
 
 def sigint_handler(signum, frame):
@@ -91,56 +16,64 @@ def sigint_handler(signum, frame):
     loop = False
 
 
-def get_configuration():
-    config_path = os.path.join(os.getcwd(), "configuration.yml")
-    with open(config_path, 'r') as file:
-        config = yaml.safe_load(file)
-    return config
+async def update_node_streams(configuration, streams):
+    while True:
+        if data_reading_buffer:
+            data_reading = data_reading_buffer.pop(0)
+            node = configuration.get_node_for_id(data_reading.id)
+            for stream_id in node.streams:
+                stream = streams.get(stream_id)
+                stream.save_data(node, data_reading)
+        await asyncio.sleep(1)  # Adjust the sleep duration as needed
 
 
-def config_nodes(config):
-    nodes = []
-    for n in config["nodes"]:
-        nodes.append(Node(n["id"], n["name"]))
-    return nodes
-
-
-async def read_serial_data(loop, serial_port, serial_baud_rate, nodes, username, key):
+async def read_from_serial(serial_port, serial_baud_rate):
     reader, _ = await serial_asyncio.open_serial_connection(url=serial_port, baudrate=serial_baud_rate)
-    async with aiohttp.ClientSession() as session:
-        while loop:
-            try:
-                line = await reader.readline()
-                line = line.decode('utf-8').rstrip()
-                print(line)
-                if not line.startswith("["):
-                    continue
-                datas = json.loads(line)
-                for data in datas:
-                    dr = DataReading(data)
-                    print(dr)
-                    await save_data(session, nodes, dr, username, key)
-                print("")
-            except Exception as e:
-                print(f"Error: {e}")
+    while True:
+        try:
+            line = await reader.readline()
+            line = line.decode('utf-8').rstrip()
+            print(line)
+            if not line.startswith("["):
+                continue
+            datas = json.loads(line)
+            for data in datas:
+                dr = DataReading(data)
+                print(dr)
+                data_reading_buffer.append(dr)
+            print("")
+        except Exception as e:
+            print(f"Error: {e}")
+        except asyncio.CancelledError:
+            break
 
 
 loop = True
+data_reading_buffer = []
+
+
+async def main():
+    print("Initializing PeakSense...")
+    signal.signal(signal.SIGTERM, sigint_handler)
+    configuration = Configuration(os.getcwd())
+    print(f"Configuration:\n\n{configuration.config}")
+    nodes = configuration.get_nodes()
+    print(f"Nodes: {nodes}")
+    serial_port = configuration.get("serial")["port"]
+    serial_baud_rate = configuration.get("serial")["baud_rate"]
+    print(f"Serial connection:\n\t- Port: {serial_port}\n\t- Baud rate: {serial_baud_rate}")
+    streams = Streams(configuration)
+
+    tasks = [
+        asyncio.create_task(read_from_serial(serial_port, serial_baud_rate)),
+        asyncio.create_task(update_node_streams(configuration, streams))
+    ]
+
+    await asyncio.gather(*tasks)
+
 
 if __name__ == '__main__':
-    print("Initializing PeakSense...")
-
-    signal.signal(signal.SIGTERM, sigint_handler)
-    config = get_configuration()
-    print(f"Configuration:\n\n{config}")
-    nodes = config_nodes(config)
-    print(f"Nodes: {nodes}")
-    serial_port = config["serial"]["port"]
-    serial_baud_rate = config["serial"]["baud_rate"]
-    username = config["adafruit"]["username"]
-    key = config["adafruit"]["key"]
-
     try:
-        asyncio.run(read_serial_data(loop, serial_port, serial_baud_rate, nodes, username, key))
+        asyncio.run(main())
     except KeyboardInterrupt:
-        print("Closing PeakSense...")
+        print("Program interrupted")
